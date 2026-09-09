@@ -95,17 +95,30 @@ async def test_sell_with_insufficient_holdings_fails():
 async def test_buy_exceeding_ownership_cap_fails():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        user_id, card_id = await setup_user_and_card(client)
+        creator_resp = await client.post("/users/", json={"username": unique_name("creator")})
+        creator_id = creator_resp.json()["id"]
 
-        # user only has 1000 currency to start, so this needs the card's
-        # cap to be reachable with that budget: cap is 20% of 10000 = 2000
-        # units, well beyond what 1000 currency can buy on this pool, so
-        # instead we assert the cap is enforced by checking a case where
-        # it legitimately should trigger: extremely small pool.
+        # Small pool relative to a 1000-currency budget: total_supply=100,
+        # default cap_pct=0.20 means the cap is 20 units, easily reachable
+        # with a large-but-affordable single trade.
+        card_resp = await client.post(
+            "/cards/",
+            json={
+                "name": unique_name("card"),
+                "creator_id": creator_id,
+                "total_supply": 100,
+                "initial_currency_reserve": 1000,
+                "initial_card_reserve": 100,
+            },
+        )
+        card_id = card_resp.json()["id"]
+
+        buyer_resp = await client.post("/users/", json={"username": unique_name("buyer")})
+        buyer_id = buyer_resp.json()["id"]
+
         response = await client.post(
             "/trades/",
-            json={"user_id": user_id, "card_id": card_id, "side": "buy", "amount": 900},
+            json={"user_id": buyer_id, "card_id": card_id, "side": "buy", "amount": 900},
         )
-        # 900 currency against this pool won't hit the cap; this confirms
-        # a large-but-affordable buy succeeds normally instead.
-        assert response.status_code == 201
+        assert response.status_code == 400
+        assert "cap" in response.json()["detail"].lower()
