@@ -50,3 +50,20 @@ class TradeOut(BaseModel):
     quantity: float
     price: float
     fee_amount: float
+
+class PortfolioItem(BaseModel):
+    card_id: str
+    card_name: str
+    quantity: float
+    avg_cost_basis: float
+    current_price: float
+    market_value: float
+    unrealized_pnl: float
+    unrealized_pnl_pct: float
+
+
+class PortfolioOut(BaseModel):
+    user_id: str
+    currency_balance: float
+    holdings: list[PortfolioItem]
+    total_portfolio_value: float

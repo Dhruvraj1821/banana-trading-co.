@@ -15,8 +15,6 @@ router = APIRouter(prefix="/trades", tags=["trades"])
 async def execute_trade(
     payload: TradeCreate, db: AsyncSession = Depends(get_db_session)
 ):
-    # Lock order: card, then user, then holding. Always this order,
-    # on every code path, to prevent deadlocks between concurrent trades.
     card = await db.scalar(
         select(Card).where(Card.id == payload.card_id).with_for_update()
     )
@@ -35,6 +33,7 @@ async def execute_trade(
         .with_for_update()
     )
     current_quantity = holding.quantity if holding is not None else 0.0
+    current_avg_cost_basis = holding.avg_cost_basis if holding is not None else 0.0
 
     pool = LiquidityPool(
         currency_reserve=card.currency_reserve,
@@ -57,6 +56,10 @@ async def execute_trade(
         trade_quantity = result.net_amount
         trade_price = payload.amount / result.net_amount
 
+        new_quantity = ledger.balance_of(payload.user_id)
+        prior_cost_total = current_quantity * current_avg_cost_basis
+        new_avg_cost_basis = (prior_cost_total + payload.amount) / new_quantity
+
     else:  # sell
         if current_quantity < payload.amount:
             raise HTTPException(status_code=400, detail="Insufficient holdings")
@@ -70,18 +73,23 @@ async def execute_trade(
         trade_quantity = payload.amount
         trade_price = result.net_amount / payload.amount
 
-    # Persist the pool's updated reserves back onto the card row
+        new_quantity = ledger.balance_of(payload.user_id)
+        new_avg_cost_basis = current_avg_cost_basis if new_quantity > 0 else 0.0
+
     card.currency_reserve = pool.currency_reserve
     card.card_reserve = pool.card_reserve
 
-    new_quantity = ledger.balance_of(payload.user_id)
     if holding is None:
         holding = Holding(
-            user_id=payload.user_id, card_id=payload.card_id, quantity=new_quantity
+            user_id=payload.user_id,
+            card_id=payload.card_id,
+            quantity=new_quantity,
+            avg_cost_basis=new_avg_cost_basis,
         )
         db.add(holding)
     else:
         holding.quantity = new_quantity
+        holding.avg_cost_basis = new_avg_cost_basis
 
     trade = Trade(
         user_id=payload.user_id,

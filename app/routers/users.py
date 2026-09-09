@@ -3,8 +3,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db_session
-from app.models import User
-from app.schemas import UserCreate, UserOut
+from app.models import User, Card, Holding
+from app.schemas import UserCreate, UserOut, PortfolioItem, PortfolioOut
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -32,3 +32,47 @@ async def get_user(user_id: str, db: AsyncSession = Depends(get_db_session)):
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+@router.get("/{user_id}/portfolio", response_model=PortfolioOut)
+async def get_portfolio(user_id: str, db: AsyncSession = Depends(get_db_session)):
+    user = await db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    result = await db.scalars(
+        select(Holding).where(Holding.user_id == user_id, Holding.quantity > 0)
+    )
+    holdings = result.all()
+
+    items = []
+    for holding in holdings:
+        card = await db.get(Card, holding.card_id)
+        current_price = card.currency_reserve / card.card_reserve
+        market_value = holding.quantity * current_price
+        cost_total = holding.quantity * holding.avg_cost_basis
+        unrealized_pnl = market_value - cost_total
+        unrealized_pnl_pct = (
+            (unrealized_pnl / cost_total * 100) if cost_total > 0 else 0.0
+        )
+
+        items.append(
+            PortfolioItem(
+                card_id=card.id,
+                card_name=card.name,
+                quantity=holding.quantity,
+                avg_cost_basis=holding.avg_cost_basis,
+                current_price=current_price,
+                market_value=market_value,
+                unrealized_pnl=unrealized_pnl,
+                unrealized_pnl_pct=unrealized_pnl_pct,
+            )
+        )
+
+    total_value = user.currency_balance + sum(item.market_value for item in items)
+
+    return PortfolioOut(
+        user_id=user.id,
+        currency_balance=user.currency_balance,
+        holdings=items,
+        total_portfolio_value=total_value,
+    )
