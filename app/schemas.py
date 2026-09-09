@@ -32,3 +32,21 @@ class CardOut(BaseModel):
     fee_rate: float
     cap_pct: float
     price: float
+
+class TradeCreate(BaseModel):
+    user_id: str
+    card_id: str
+    side: str = Field(pattern="^(buy|sell)$")
+    amount: float = Field(gt=0)  # currency to spend (buy) or units to sell (sell)
+
+
+class TradeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    user_id: str
+    card_id: str
+    side: str
+    quantity: float
+    price: float
+    fee_amount: float
