@@ -10,17 +10,25 @@ class OwnershipCapExceededError(Exception):
 class OwnershipLedger:
     """
     Tracks how many units of one card each player holds, and enforces
-    a max percentage of circulating supply any single player can own.
+    a max percentage of the card's total supply any single player can
+    own.
+
+    total_supply is fixed at the card's launch (how many units could
+    ever exist for a fixed-supply card), not how many units players
+    currently hold. Using a growing "circulating supply" as the cap
+    basis creates a bootstrapping deadlock: the very first buyer would
+    always own 100% of whatever has been traded out so far, which
+    breaks any cap below 100% before a single trade can happen.
     """
-    circulating_supply: float
-    cap_pct: float = 0.20  # no player may hold more than 20% by default
+    total_supply: float
+    cap_pct: float = 0.20
     holdings: dict = field(default_factory=dict)
 
     def balance_of(self, player_id: str) -> float:
         return self.holdings.get(player_id, 0)
 
     def max_allowed_holding(self) -> float:
-        return self.circulating_supply * self.cap_pct
+        return self.total_supply * self.cap_pct
 
     def record_buy(self, player_id: str, units: float) -> None:
         """
@@ -47,13 +55,3 @@ class OwnershipLedger:
                 f"Player only holds {current:.2f} units, cannot sell {units:.2f}"
             )
         self.holdings[player_id] = current - units
-
-    def grow_supply(self, new_units: float) -> None:
-        """
-        Call this whenever the pool's card_reserve changes due to a buy
-        pulling units out of circulation into a player's hands, or a
-        sell returning them. Circulating supply here means units that
-        exist and could theoretically be owned, not units sitting in
-        the pool.
-        """
-        self.circulating_supply += new_units
