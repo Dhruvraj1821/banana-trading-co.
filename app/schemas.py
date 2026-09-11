@@ -18,6 +18,8 @@ class CardCreate(BaseModel):
     total_supply: float = Field(gt=0)
     initial_currency_reserve: float = Field(gt=0)
     initial_card_reserve: float = Field(gt=0)
+    creator_stake_pct: float = Field(default=0.0, ge=0, le=1)
+    supply_model: str = Field(default="fixed", pattern="^(fixed|unlimited)$")
 
 
 class CardOut(BaseModel):
@@ -31,6 +33,8 @@ class CardOut(BaseModel):
     card_reserve: float
     fee_rate: float
     cap_pct: float
+    creator_stake_pct: float
+    supply_model: str
     price: float
 
 class TradeCreate(BaseModel):

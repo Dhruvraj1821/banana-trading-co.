@@ -35,6 +35,8 @@ class Card(Base):
 
     fee_rate: Mapped[float] = mapped_column(Float, default=0.01)
     cap_pct: Mapped[float] = mapped_column(Float, default=0.20)
+    creator_stake_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    supply_model: Mapped[str] = mapped_column(String, default="fixed")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

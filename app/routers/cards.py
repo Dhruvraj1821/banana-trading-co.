@@ -18,6 +18,8 @@ def to_card_out(card: Card) -> CardOut:
         card_reserve=card.card_reserve,
         fee_rate=card.fee_rate,
         cap_pct=card.cap_pct,
+        creator_stake_pct=card.creator_stake_pct,
+        supply_model=card.supply_model,
         price=card.currency_reserve / card.card_reserve,
     )
 
@@ -34,12 +36,30 @@ async def create_card(
     if existing is not None:
         raise HTTPException(status_code=409, detail="Card name already taken")
 
+    if payload.supply_model == "unlimited":
+        raise HTTPException(
+            status_code=400, detail="Unlimited supply model is not implemented yet"
+        )
+
+    default_cap_pct = 0.20
+    if payload.creator_stake_pct > default_cap_pct:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"creator_stake_pct ({payload.creator_stake_pct}) cannot exceed "
+                f"the ownership cap ({default_cap_pct}); a card cannot launch "
+                f"already violating its own anti-whale rule"
+            ),
+        )
+
     card = Card(
         name=payload.name,
         creator_id=payload.creator_id,
         total_supply=payload.total_supply,
         currency_reserve=payload.initial_currency_reserve,
         card_reserve=payload.initial_card_reserve,
+        creator_stake_pct=payload.creator_stake_pct,
+        supply_model=payload.supply_model,
     )
     db.add(card)
     await db.commit()

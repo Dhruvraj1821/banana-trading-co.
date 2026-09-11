@@ -80,3 +80,80 @@ async def test_get_nonexistent_card_returns_404():
         response = await client.get("/cards/does-not-exist")
 
     assert response.status_code == 404
+
+async def test_create_card_with_creator_stake():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creator_id = await create_test_user(client)
+        response = await client.post(
+            "/cards/",
+            json={
+                "name": unique_name("card"),
+                "creator_id": creator_id,
+                "total_supply": 10000,
+                "initial_currency_reserve": 100000,
+                "initial_card_reserve": 10000,
+                "creator_stake_pct": 0.15,
+            },
+        )
+
+    assert response.status_code == 201
+    assert response.json()["creator_stake_pct"] == 0.15
+
+
+async def test_create_card_with_stake_above_cap_fails():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creator_id = await create_test_user(client)
+        response = await client.post(
+            "/cards/",
+            json={
+                "name": unique_name("card"),
+                "creator_id": creator_id,
+                "total_supply": 10000,
+                "initial_currency_reserve": 100000,
+                "initial_card_reserve": 10000,
+                "creator_stake_pct": 0.5,
+            },
+        )
+
+    assert response.status_code == 400
+
+
+async def test_create_card_with_unlimited_supply_model_fails():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creator_id = await create_test_user(client)
+        response = await client.post(
+            "/cards/",
+            json={
+                "name": unique_name("card"),
+                "creator_id": creator_id,
+                "total_supply": 10000,
+                "initial_currency_reserve": 100000,
+                "initial_card_reserve": 10000,
+                "supply_model": "unlimited",
+            },
+        )
+
+    assert response.status_code == 400
+
+
+async def test_create_card_defaults_to_fixed_supply_zero_stake():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creator_id = await create_test_user(client)
+        response = await client.post(
+            "/cards/",
+            json={
+                "name": unique_name("card"),
+                "creator_id": creator_id,
+                "total_supply": 10000,
+                "initial_currency_reserve": 100000,
+                "initial_card_reserve": 10000,
+            },
+        )
+
+    data = response.json()
+    assert data["supply_model"] == "fixed"
+    assert data["creator_stake_pct"] == 0.0
