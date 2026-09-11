@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db_session
-from app.models import Card, User
+from app.models import Card, User, Holding
 from app.schemas import CardCreate, CardOut
 
 router = APIRouter(prefix="/cards", tags=["cards"])
@@ -52,20 +52,41 @@ async def create_card(
             ),
         )
 
+    stake_units = payload.total_supply * payload.creator_stake_pct
+    if stake_units > payload.initial_card_reserve:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Creator stake requires {stake_units:.2f} units, but "
+                f"initial_card_reserve only provides {payload.initial_card_reserve:.2f}. "
+                f"Increase initial_card_reserve or lower creator_stake_pct."
+            ),
+        )
+
     card = Card(
         name=payload.name,
         creator_id=payload.creator_id,
         total_supply=payload.total_supply,
         currency_reserve=payload.initial_currency_reserve,
-        card_reserve=payload.initial_card_reserve,
+        card_reserve=payload.initial_card_reserve - stake_units,
         creator_stake_pct=payload.creator_stake_pct,
         supply_model=payload.supply_model,
     )
     db.add(card)
+    await db.flush()  # assigns card.id without ending the transaction
+
+    if stake_units > 0:
+        stake_holding = Holding(
+            user_id=payload.creator_id,
+            card_id=card.id,
+            quantity=stake_units,
+            avg_cost_basis=0.0,
+        )
+        db.add(stake_holding)
+
     await db.commit()
     await db.refresh(card)
     return to_card_out(card)
-
 
 @router.get("/", response_model=list[CardOut])
 async def list_cards(db: AsyncSession = Depends(get_db_session)):
