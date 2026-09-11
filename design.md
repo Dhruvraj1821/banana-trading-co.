@@ -166,6 +166,27 @@ while slippage independently punishes large trades even in scenarios
 where the cap alone wouldn't have been tight enough. These are the
 confirmed default values going into Phase 2.
 
+## Phase 3: Creator Stake Fairness (exploit write-up)
+
+A creator retaining a stake in their own card could plausibly extract
+unfair value if that stake were exempt from the same rules other holders
+face. Two properties were verified with automated tests:
+
+- A creator's stake is checked against the ownership cap **at the same
+  percentage as any other holder**, at both creation time (stake cannot
+  exceed the cap) and in every subsequent trade. A creator holding the
+  maximum allowed 20% stake cannot buy a single additional unit, the
+  cap blocks it exactly as it would a whale's attempted purchase.
+- Selling a creator's stake executes through the same constant-product
+  curve as any sell, there is no fixed-price or privileged redemption
+  path. Liquidating a full stake in one trade measurably drops the
+  price via the same slippage mechanism that punishes any large sale.
+
+Combined with the currency conservation test (system-wide currency
+strictly decreases by exactly the burn amount across any batch of
+trades, never drifts up), this closes out Phase 3's core fairness
+requirement: creator stake is a real economic incentive, not a backdoor.
+
 ## Architecture (initial pass)
 
 - FastAPI backend, async
