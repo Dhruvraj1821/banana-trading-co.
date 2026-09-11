@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db_session
 from app.models import Card, User, Holding, Trade
 from app.schemas import TradeCreate, TradeOut
+from app.constants import TREASURY_USERNAME
 from engine.pricing import LiquidityPool, InsufficientLiquidityError
 from engine.ownership import OwnershipLedger, OwnershipCapExceededError
 
@@ -21,11 +22,31 @@ async def execute_trade(
     if card is None:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    user = await db.scalar(
-        select(User).where(User.id == payload.user_id).with_for_update()
+    treasury_id_lookup = await db.scalar(
+        select(User.id).where(User.username == TREASURY_USERNAME)
     )
+    if treasury_id_lookup is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Treasury account not found; run scripts/seed_treasury.py",
+        )
+
+    # Lock every distinct user row this trade might touch, in a fixed
+    # order (sorted by id) across ALL trades and ALL roles, to prevent
+    # deadlocks between transactions that involve the same users in
+    # different roles (e.g. one trade's trader is another trade's creator).
+    user_ids_to_lock = sorted({payload.user_id, card.creator_id, treasury_id_lookup})
+    locked_users = {}
+    for uid in user_ids_to_lock:
+        locked_users[uid] = await db.scalar(
+            select(User).where(User.id == uid).with_for_update()
+        )
+
+    user = locked_users[payload.user_id]
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    creator = locked_users[card.creator_id]
+    treasury = locked_users[treasury_id_lookup]
 
     holding = await db.scalar(
         select(Holding)
@@ -75,6 +96,11 @@ async def execute_trade(
 
         new_quantity = ledger.balance_of(payload.user_id)
         new_avg_cost_basis = current_avg_cost_basis if new_quantity > 0 else 0.0
+
+    # Pay out the fee split. burn_fee is intentionally never credited
+    # anywhere, it's designed to leave the economy entirely.
+    creator.currency_balance += result.creator_fee
+    treasury.currency_balance += result.treasury_fee
 
     card.currency_reserve = pool.currency_reserve
     card.card_reserve = pool.card_reserve

@@ -1,5 +1,5 @@
 import uuid
-
+import pytest
 from httpx import AsyncClient, ASGITransport
 
 from app.main import app
@@ -10,22 +10,25 @@ def unique_name(prefix: str) -> str:
 
 
 async def setup_user_and_card(client: AsyncClient, cap_pct: float = 0.20):
-    user_resp = await client.post("/users/", json={"username": unique_name("user")})
-    user_id = user_resp.json()["id"]
+    creator_resp = await client.post("/users/", json={"username": unique_name("creator")})
+    creator_id = creator_resp.json()["id"]
 
     card_resp = await client.post(
         "/cards/",
         json={
             "name": unique_name("card"),
-            "creator_id": user_id,
+            "creator_id": creator_id,
             "total_supply": 10000,
             "initial_currency_reserve": 100000,
             "initial_card_reserve": 10000,
         },
     )
     card_id = card_resp.json()["id"]
-    return user_id, card_id
 
+    trader_resp = await client.post("/users/", json={"username": unique_name("trader")})
+    trader_id = trader_resp.json()["id"]
+
+    return trader_id, card_id
 
 async def test_buy_updates_balance_and_price():
     transport = ASGITransport(app=app)
@@ -122,3 +125,63 @@ async def test_buy_exceeding_ownership_cap_fails():
         )
         assert response.status_code == 400
         assert "cap" in response.json()["detail"].lower()
+
+async def test_buy_credits_creator_and_treasury_fees():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creator_resp = await client.post("/users/", json={"username": unique_name("creator")})
+        creator_id = creator_resp.json()["id"]
+
+        card_resp = await client.post(
+            "/cards/",
+            json={
+                "name": unique_name("card"),
+                "creator_id": creator_id,
+                "total_supply": 10000,
+                "initial_currency_reserve": 100000,
+                "initial_card_reserve": 10000,
+            },
+        )
+        card_id = card_resp.json()["id"]
+
+        trader_resp = await client.post("/users/", json={"username": unique_name("trader")})
+        trader_id = trader_resp.json()["id"]
+
+        creator_balance_before = (await client.get(f"/users/{creator_id}")).json()["currency_balance"]
+
+        trade_resp = await client.post(
+            "/trades/", json={"user_id": trader_id, "card_id": card_id, "side": "buy", "amount": 100}
+        )
+        fee_amount = trade_resp.json()["fee_amount"]
+
+        creator_balance_after = (await client.get(f"/users/{creator_id}")).json()["currency_balance"]
+
+        # default FeeSplit is 30% creator / 40% burn / 30% treasury
+        expected_creator_fee = fee_amount * 0.30
+        assert creator_balance_after - creator_balance_before == pytest.approx(expected_creator_fee)
+
+
+async def test_creator_trading_their_own_card_does_not_deadlock_or_double_lock():
+    """The creator and trader are the same user here, exercising the
+    dedup in the lock-ordering logic."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creator_resp = await client.post("/users/", json={"username": unique_name("selftrader")})
+        creator_id = creator_resp.json()["id"]
+
+        card_resp = await client.post(
+            "/cards/",
+            json={
+                "name": unique_name("card"),
+                "creator_id": creator_id,
+                "total_supply": 10000,
+                "initial_currency_reserve": 100000,
+                "initial_card_reserve": 10000,
+            },
+        )
+        card_id = card_resp.json()["id"]
+
+        response = await client.post(
+            "/trades/", json={"user_id": creator_id, "card_id": card_id, "side": "buy", "amount": 100}
+        )
+        assert response.status_code == 201
