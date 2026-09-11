@@ -185,3 +185,66 @@ async def test_creator_trading_their_own_card_does_not_deadlock_or_double_lock()
             "/trades/", json={"user_id": creator_id, "card_id": card_id, "side": "buy", "amount": 100}
         )
         assert response.status_code == 201
+
+async def test_creator_stake_at_cap_blocks_further_buying():
+    """A creator who took the max allowed stake (20%) already owns as
+    much of the card as the anti-whale cap permits. No special
+    treatment: any further buy is blocked exactly like a whale's would be."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creator_resp = await client.post("/users/", json={"username": unique_name("creator")})
+        creator_id = creator_resp.json()["id"]
+
+        card_resp = await client.post(
+            "/cards/",
+            json={
+                "name": unique_name("card"),
+                "creator_id": creator_id,
+                "total_supply": 10000,
+                "initial_currency_reserve": 100000,
+                "initial_card_reserve": 10000,
+                "creator_stake_pct": 0.20,
+            },
+        )
+        card_id = card_resp.json()["id"]
+
+        response = await client.post(
+            "/trades/", json={"user_id": creator_id, "card_id": card_id, "side": "buy", "amount": 10}
+        )
+        assert response.status_code == 400
+        assert "cap" in response.json()["detail"].lower()
+
+
+async def test_creator_selling_stake_faces_same_slippage_as_anyone_else():
+    """Selling the creator stake goes through the same AMM math as any
+    holder's sale, no fixed-price redemption or special exit path."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        creator_resp = await client.post("/users/", json={"username": unique_name("creator")})
+        creator_id = creator_resp.json()["id"]
+
+        card_resp = await client.post(
+            "/cards/",
+            json={
+                "name": unique_name("card"),
+                "creator_id": creator_id,
+                "total_supply": 10000,
+                "initial_currency_reserve": 100000,
+                "initial_card_reserve": 10000,
+                "creator_stake_pct": 0.20,
+            },
+        )
+        card_id = card_resp.json()["id"]
+        starting_price = card_resp.json()["price"]
+
+        portfolio = await client.get(f"/users/{creator_id}/portfolio")
+        stake_units = portfolio.json()["holdings"][0]["quantity"]
+
+        sell_resp = await client.post(
+            "/trades/",
+            json={"user_id": creator_id, "card_id": card_id, "side": "sell", "amount": stake_units},
+        )
+        assert sell_resp.status_code == 201
+
+        new_card = (await client.get(f"/cards/{card_id}")).json()
+        assert new_card["price"] < starting_price
