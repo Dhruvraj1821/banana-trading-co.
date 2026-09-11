@@ -8,6 +8,9 @@ from app.schemas import TradeCreate, TradeOut
 from app.constants import TREASURY_USERNAME
 from engine.pricing import LiquidityPool, InsufficientLiquidityError
 from engine.ownership import OwnershipLedger, OwnershipCapExceededError
+import json
+from app.redis_client import redis_client
+
 
 router = APIRouter(prefix="/trades", tags=["trades"])
 
@@ -129,4 +132,12 @@ async def execute_trade(
 
     await db.commit()
     await db.refresh(trade)
+    await redis_client.publish(
+        f"card:{payload.card_id}:price",
+        json.dumps({
+            "card_id": payload.card_id,
+            "price": trade_price,
+            "event": "trade"
+        }),
+    )
     return trade
