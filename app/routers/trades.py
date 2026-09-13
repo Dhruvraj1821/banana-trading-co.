@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db_session
-from app.models import Card, User, Holding, Trade
+from app.models import Card, User, Holding, Trade, PriceHistory
 from app.schemas import TradeCreate, TradeOut
 from app.constants import TREASURY_USERNAME
 from engine.pricing import LiquidityPool, InsufficientLiquidityError
@@ -108,6 +108,8 @@ async def execute_trade(
     card.currency_reserve = pool.currency_reserve
     card.card_reserve = pool.card_reserve
 
+    db.add(PriceHistory(card_id=payload.card_id, price=trade_price, event="trade"))
+    
     if holding is None:
         holding = Holding(
             user_id=payload.user_id,

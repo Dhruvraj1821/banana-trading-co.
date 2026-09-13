@@ -71,3 +71,19 @@ class Trade(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+class PriceHistory(Base):
+    """
+    Append-only log of every price change, from trades or drift ticks.
+    This is what makes historical questions (gainers/losers, "price an
+    hour ago") answerable without replaying every trade from scratch.
+    """
+    __tablename__ = "price_history"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    card_id: Mapped[str] = mapped_column(String, ForeignKey("cards.id"), index=True)
+    price: Mapped[float] = mapped_column(Float)
+    event: Mapped[str] = mapped_column(String)  # "trade" or "drift"
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.database import async_session_factory
-from app.models import Card, Trade
+from app.models import Card, Trade, PriceHistory
 from app.redis_client import redis_client
 from engine.pricing import LiquidityPool
 from engine.drift import ActivityStats, apply_drift_tick
@@ -52,6 +52,7 @@ async def drift_one_card(card_id: str):
 
         card.currency_reserve = pool.currency_reserve
         card.card_reserve = pool.card_reserve
+        session.add(PriceHistory(card_id=card_id, price=pool.price, event="drift"))
         await session.commit()
 
     await redis_client.publish(
