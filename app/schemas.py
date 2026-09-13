@@ -84,3 +84,32 @@ class CreatorLeaderboardEntry(BaseModel):
     username: str
     card_count: int
     total_trading_volume: float
+
+class GainerLoser(BaseModel):
+    card_id: str
+    card_name: str
+    pct_change: float
+    latest_price: float
+
+
+class NewListing(BaseModel):
+    card_id: str
+    card_name: str
+    creator_username: str
+    total_supply: float
+
+
+class WhaleTrade(BaseModel):
+    card_name: str
+    username: str
+    side: str
+    currency_value: float
+
+
+class Newspaper(BaseModel):
+    generated_at: str
+    headlines: list[str]
+    top_gainers: list[GainerLoser]
+    top_losers: list[GainerLoser]
+    new_listings: list[NewListing]
+    whale_trades: list[WhaleTrade]

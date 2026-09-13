@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import users, cards, trades, websockets, leaderboard
+from app.routers import users, cards, trades, websockets, leaderboard, newspaper
 
 app = FastAPI(title="Banana Trading Company")
 
@@ -17,6 +17,7 @@ app.include_router(cards.router)
 app.include_router(trades.router)
 app.include_router(websockets.router)
 app.include_router(leaderboard.router)
+app.include_router(newspaper.router)
 
 @app.get("/health")
 async def health():
