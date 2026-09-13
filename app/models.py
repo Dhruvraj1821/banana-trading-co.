@@ -1,10 +1,9 @@
 import uuid
 from datetime import datetime, timezone
-
 from sqlalchemy import String, Float, ForeignKey, DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.database import Base
+from app.constants import STARTING_BALANCE
 
 
 def new_uuid() -> str:
@@ -16,7 +15,7 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
     username: Mapped[str] = mapped_column(String, unique=True, index=True)
-    currency_balance: Mapped[float] = mapped_column(Float, default=1000.0)
+    currency_balance: Mapped[float] = mapped_column(Float, default=STARTING_BALANCE)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

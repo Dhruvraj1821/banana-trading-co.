@@ -71,3 +71,16 @@ class PortfolioOut(BaseModel):
     currency_balance: float
     holdings: list[PortfolioItem]
     total_portfolio_value: float
+
+class LeaderboardEntry(BaseModel):
+    user_id: str
+    username: str
+    net_worth: float
+    roi_pct: float
+
+
+class CreatorLeaderboardEntry(BaseModel):
+    user_id: str
+    username: str
+    card_count: int
+    total_trading_volume: float
